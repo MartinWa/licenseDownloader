@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 
 namespace licenseDownloader
@@ -16,24 +17,30 @@ namespace licenseDownloader
                 const string resultsDirectory = "licenses";
                 Directory.CreateDirectory(resultsDirectory);
                 var licenses = await File.ReadAllLinesAsync(path);
-                var licenseUris = licenses.Select(ConvertStringToAbsoluteUri).ToList();
-                Console.WriteLine($"From {licenses.Length} lines {licenseUris.Count} urls were valid");
                 using var webClient = new System.Net.WebClient();
                 var count = 0;
                 var result = new List<string>();
-                foreach (var uri in licenseUris)
+                foreach (var urlString in licenses)
                 {
                     count += 1;
-                    if (uri == null)
                     {
-                        result.Add(string.Empty);
-                        continue;
+                        var licenseFile = $"License_{count}.txt";
+                        var licenseFilePath = $"{resultsDirectory}\\{licenseFile}";
+                        try
+                        {
+                            var uri = new Uri(urlString, UriKind.Absolute);
+                            await webClient.DownloadFileTaskAsync(uri, licenseFilePath);
+                            result.Add($"=HYPERTEXT(\"{licenseFilePath}\",\"{licenseFile}\"\n");
+                        }
+                        catch (UriFormatException ex)
+                        {
+                            result.Add(ex.Message);
+                        }
+                        catch (WebException ex)
+                        {
+                            result.Add(ex.Message);
+                        }
                     }
-                    var licenseText = webClient.DownloadString(uri);
-                    var licenseFile = $"License_{count}.txt";
-                    var licenseFilePath = $"{resultsDirectory}\\{licenseFile}";
-                    await File.WriteAllTextAsync(licenseFilePath, licenseText);
-                    result.Add($"=HYPERTEXT(\"{licenseFilePath}\",\"{licenseFile}\"\n");
                 }
                 await File.WriteAllLinesAsync("result.txt", result);
             }
@@ -42,11 +49,6 @@ namespace licenseDownloader
                 Console.WriteLine($"Exception {ex.Message}");
                 Console.WriteLine($"{ex.StackTrace}");
             }
-        }
-
-        private static Uri ConvertStringToAbsoluteUri(string stringToConvert)
-        {
-            return Uri.TryCreate(stringToConvert, UriKind.Absolute, out var uri) ? uri : null;
         }
     }
 }
