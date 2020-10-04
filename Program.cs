@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
 namespace licenseDownloader
 {
-    class Program
+    internal static class Program
     {
-        static async Task Main(string[] args)
+        private static async Task Main()
         {
             try
             {
@@ -17,29 +16,33 @@ namespace licenseDownloader
                 const string resultsDirectory = "licenses";
                 Directory.CreateDirectory(resultsDirectory);
                 var licenses = await File.ReadAllLinesAsync(path);
-                using var webClient = new System.Net.WebClient();
+                using var webClient = new WebClient();
                 var count = 0;
                 var result = new List<string>();
                 foreach (var urlString in licenses)
                 {
                     count += 1;
+                    Console.WriteLine($"Working on nr {count}: {urlString}");
+                    try
                     {
-                        var licenseFile = $"License_{count}.txt";
+                        var downloaded = await webClient.DownloadStringTaskAsync(urlString);
+                        string extension = "txt";
+                        if (downloaded.ToLower().TrimStart().StartsWith("<html") || downloaded.ToLower().TrimStart().StartsWith("<!doctype html"))
+                        {
+                            extension = "html";
+                        }
+                        var licenseFile = $"License_{count}.{extension}";
                         var licenseFilePath = $"{resultsDirectory}\\{licenseFile}";
-                        try
-                        {
-                            var uri = new Uri(urlString, UriKind.Absolute);
-                            await webClient.DownloadFileTaskAsync(uri, licenseFilePath);
-                            result.Add($"=HYPERTEXT(\"{licenseFilePath}\",\"{licenseFile}\"\n");
-                        }
-                        catch (UriFormatException ex)
-                        {
-                            result.Add(ex.Message);
-                        }
-                        catch (WebException ex)
-                        {
-                            result.Add(ex.Message);
-                        }
+                        await File.WriteAllTextAsync(licenseFilePath, downloaded);
+                        result.Add($"=HYPERLINK(\"{licenseFilePath}\",\"{licenseFile}\"");
+                    }
+                    catch (UriFormatException ex)
+                    {
+                        result.Add(ex.Message);
+                    }
+                    catch (WebException ex)
+                    {
+                        result.Add(ex.Message);
                     }
                 }
                 await File.WriteAllLinesAsync("result.txt", result);
